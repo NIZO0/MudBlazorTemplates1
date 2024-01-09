@@ -1,0 +1,219 @@
+﻿@page "/"
+@using MudBlazorTemplates1.Data
+@inject MudBlazorTemplates1.Data.DataManager MyDataManager
+
+<PageTitle>Index</PageTitle>
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenNovaTarefaMenu">Adicionar Tarefa</MudButton>
+
+<MudList>
+    @foreach (var item in Tasks)
+    {
+        <MudListItem Class="my-4">
+            <MudPaper Class="px-8">
+                <MudGrid>
+                    <MudItem xs="6" Class="d-flex align-center justify-center">@item.Descricao</MudItem>
+                    <MudItem xs="6" Class="d-flex align-center justify-center">@item.DataMarcada?.ToString("dd/MM/yyyy")</MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudListItem>
+    }
+</MudList>
+
+@if (IsAlerting)
+{
+    <MudAlert Severity="AlertSeverity">@AlertMessage</MudAlert>
+}
+
+    <MudOverlay @bind-Visible="IsNovaTarefaMenuOpen" DarkBackground="true" ZIndex="1" AutoClose="false">
+
+        <MudPaper Width="800px" Class="px-8 py-8">
+
+            <MudGrid>
+
+                <MudItem xs="12" Class="d-flex align-center justify-center">
+                    <MudText Class="d-flex align-center justify-center">Nova Tarefa</MudText>
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex align-center justify-center">
+                    <MudTextField @bind-Value="TarefaSelecionada.Descricao" Label="Descricao" Variant="Variant.Outlined"></MudTextField>
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex align-center justify-center">
+                <MudPaper Class="mud-width-full px-4 py-4">
+                    <MudDatePicker Label="Data" MinDate="DataAtual" Editable="true" @bind-Date="TarefaSelecionada.DataMarcada" Mask="@(new DateMask("dd.MM.yyyy"))" DateFormat="dd.MM.yyyy" Placeholder="1/1/2000" />
+                </MudPaper>
+                </MudItem>
+
+                 <MudItem xs="12" Class="d-flex align-center justify-center">
+                    <MudSelect T="int?" Label="Prioridade" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" @bind-Value="TarefaSelecionada.TaskStatusIndex">
+                            <MudSelectItem T="int?" Value="0">Normal</MudSelectItem>
+                            <MudSelectItem T="int?" Value="1">Concluída</MudSelectItem>
+                            <MudSelectItem T="int?" Value="2">Prioridade Baixa</MudSelectItem>
+                            <MudSelectItem T="int?" Value="3">Prioridade Média</MudSelectItem>
+                            <MudSelectItem T="int?" Value="4">Prioridade Alta</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+        </MudGrid>
+
+            <MudGrid Class="mt-5">
+                <MudItem xs="6" Class="d-flex align-center justify-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="CloseNovaTarefaMenu">Cancelar</MudButton>
+                </MudItem>
+
+                <MudItem xs="6" Class="d-flex align-center justify-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="AdicionarTarefa">Confirmar</MudButton>
+                </MudItem>
+            </MudGrid>
+
+        </MudPaper>
+
+    </MudOverlay>
+
+
+    
+
+@code
+{
+    private MudBlazor.Severity AlertSeverity;
+    private bool IsNovaTarefaMenuOpen, IsWarningToast, IsSuccessToast, IsAlerting;
+    private string WarningMessage = "Warning!", SuccessMessage = "Success!", AlertMessage = string.Empty; 
+    public List<Tarefa> Tasks = new();
+    public Tarefa TarefaSelecionada = new();
+    public DateTime DataAtual = GetDataAtual();
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _ = GetTasks();
+        // Tasks.Add(new MyTask() { Descricao = "Task1", DataMarcada = DateTime.Now.AddDays(3) });
+        // Tasks.Add(new MyTask() { Descricao = "Task2", DataMarcada = DateTime.Now.AddDays(5) });
+    }
+
+    private void OpenNovaTarefaMenu()
+    {
+        IsNovaTarefaMenuOpen = true;
+        // IsNovaTarefaButtonEnabled = false;
+        // IsFiltroButtonEnabled = false;
+        // IsAjudarButtonEnabled = false;
+    }
+
+    private async Task CloseNovaTarefaMenu()
+    {
+        IsNovaTarefaMenuOpen = false;
+
+        // IsNovaTarefaButtonEnabled = true;
+        // IsFiltroButtonEnabled = true;
+        // IsAjudarButtonEnabled = true;
+        TarefaSelecionada = new();
+        await GetTasks();
+    }
+
+    async void AdicionarTarefa()
+    {
+        if (!IsRequisitosConcluídos())
+            return;
+
+        if (TarefaSelecionada.Id == 0)
+        {
+            await MyDataManager.AdicionarTask(TarefaSelecionada);
+            await MakeToast("A tarefa foi adicionada com sucesso!", MudBlazor.Severity.Success);
+        }
+        else
+        {
+            await MyDataManager.EditarTask(TarefaSelecionada);
+            await MakeToast("A tarefa foi editada com sucesso!", MudBlazor.Severity.Success);
+        }
+
+        await CloseNovaTarefaMenu();
+    }
+
+    private async Task GetTasks()
+    {
+        Tasks.Clear();
+        var tasksSalvas = await MyDataManager.GetTasks();
+        static bool IsPriorityStatus(TarefaStatus statusIndex) => statusIndex == TarefaStatus.PrioridadeBaixa || statusIndex == TarefaStatus.PrioridadeMedia || statusIndex == TarefaStatus.PrioridadeAlta;
+
+        switch ((TaskFiltro)TarefaSelecionada.TaskStatusIndex)
+        {
+            case TaskFiltro.Concluidas:
+                tasksSalvas = tasksSalvas.Where(w => (TarefaStatus)w.TaskStatusIndex == TarefaStatus.Concluida).OrderByDescending(w => w.DataMarcada).ToList();
+                break;
+
+            case TaskFiltro.PrioridadeCrescente:
+                tasksSalvas = tasksSalvas.Where(w => IsPriorityStatus((TarefaStatus)w.TaskStatusIndex)).OrderBy(w => w.TaskStatusIndex).ThenBy(w => w.DataMarcada).ToList();
+                break;
+
+            case TaskFiltro.PrioridadeDecrescente:
+                tasksSalvas = tasksSalvas.Where(w => IsPriorityStatus((TarefaStatus)w.TaskStatusIndex)).OrderByDescending(w => w.TaskStatusIndex).ThenBy(w => w.DataMarcada).ToList();
+                break;
+
+            case TaskFiltro.DataCriacaoCrescente:
+                tasksSalvas = tasksSalvas.OrderBy(w => w.DataCriada).ToList();
+                break;
+
+            case TaskFiltro.DataCriacaoDecrescente:
+                tasksSalvas = tasksSalvas.OrderByDescending(w => w.DataCriada).ToList();
+                break;
+
+            case TaskFiltro.DataMarcadaCrescente:
+                tasksSalvas = tasksSalvas.OrderBy(w => w.DataMarcada).ToList();
+                break;
+
+            case TaskFiltro.DataMarcadaDecrescente:
+                tasksSalvas = tasksSalvas.OrderByDescending(w => w.DataMarcada).ToList();
+                break;
+        }
+
+        foreach (var task in tasksSalvas)
+        {
+            Tasks.Add(task);
+            StateHasChanged();
+        }
+    }
+
+    private bool IsRequisitosConcluídos()
+    {
+        if (string.IsNullOrWhiteSpace(TarefaSelecionada.Descricao))
+        {
+            // MakeToast("Uma descrição deve ser fornecida!");
+            IsWarningToast = true;
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task MakeToast(string message, MudBlazor.Severity severity)
+    {
+        AlertMessage = message;
+        AlertSeverity = severity;
+        IsAlerting = true;
+        await Task.Delay(3000);
+        IsAlerting = false;
+        StateHasChanged();
+    }
+
+    public static DateTime GetDataAtual()
+    {
+        return DateTime.Now.AddDays(-1);
+    }
+
+    public class MyTask
+    {
+        public long Id { get; set; }
+
+        public string Titulo { get; set; } = "Nova Tarefa";
+
+        public string Descricao { get; set; } = string.Empty;
+
+        public bool IsCompleted { get; set; }
+
+        public DateTime DataCriada { get; set; }
+
+        public DateTime? DataMarcada { get; set; } = DateTime.Now;
+
+        public int? TaskStatusIndex { get; set; }
+    }
+
+}
